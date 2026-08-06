@@ -68,6 +68,7 @@ int16_t currentAngle[SERVO_COUNT] = {-1, -1, -1, -1, -1, -1};
 int16_t targetAngle[SERVO_COUNT] = {-1, -1, -1, -1, -1, -1};
 bool controlsLocked = true;
 bool mdnsReady = false;
+bool pwmReady = false;
 uint32_t lastMotionStepMs = 0;
 int8_t homeJointId = -1;
 uint32_t homeAdvanceAtMs = 0;
@@ -106,7 +107,7 @@ uint16_t angleToPulseUs(uint8_t jointId, int16_t logicalAngle) {
 }
 
 void writeJoint(uint8_t jointId, int16_t angle) {
-  if (jointId >= SERVO_COUNT) {
+  if (!pwmReady || jointId >= SERVO_COUNT) {
     return;
   }
 
@@ -142,6 +143,10 @@ bool isJointMoving(uint8_t jointId) {
 }
 
 void updateMotion() {
+  if (!pwmReady) {
+    return;
+  }
+
   const uint32_t now = millis();
   if (now - lastMotionStepMs < STEP_DELAY_MS) {
     return;
@@ -160,6 +165,10 @@ void updateMotion() {
 }
 
 void updateHomeSequence() {
+  if (!pwmReady) {
+    return;
+  }
+
   if (homeJointId < 0 ||
       isJointMoving(static_cast<uint8_t>(homeJointId))) {
     return;
@@ -191,8 +200,10 @@ void disableJoint(uint8_t jointId) {
     return;
   }
 
-  // setPin(channel, 0) sets the output fully OFF.
-  pwm.setPin(joints[jointId].channel, 0);
+  if (pwmReady) {
+    // setPin(channel, 0) sets the output fully OFF.
+    pwm.setPin(joints[jointId].channel, 0);
+  }
   currentAngle[jointId] = -1;
   targetAngle[jointId] = -1;
 }
@@ -206,6 +217,11 @@ void disableAllJoints() {
 }
 
 bool moveHome() {
+  if (!pwmReady) {
+    Serial.println(F("ERROR: PCA9685 is not ready. Check I2C wiring."));
+    return false;
+  }
+
   if (controlsLocked) {
     Serial.println(F("ERROR: Controls are locked. Use UNLOCK first."));
     return false;
@@ -227,6 +243,7 @@ void printStatus() {
   Serial.println();
   Serial.println(F("Joint status"));
   Serial.println(F("------------------------------------------"));
+  Serial.printf("PCA9685:  %s\n", pwmReady ? "READY" : "NOT FOUND");
   Serial.printf("Controls: %s\n", controlsLocked ? "LOCKED" : "UNLOCKED");
 
   for (uint8_t id = 0; id < SERVO_COUNT; ++id) {
@@ -296,6 +313,11 @@ void executeMove(const char *jointText, const char *angleText) {
 
   if (controlsLocked) {
     Serial.println(F("ERROR: Controls are locked. Use UNLOCK first."));
+    return;
+  }
+
+  if (!pwmReady) {
+    Serial.println(F("ERROR: PCA9685 is not ready. Check I2C wiring."));
     return;
   }
 
@@ -474,6 +496,8 @@ void sendStatusJson() {
   json += WiFi.softAPIP().toString();
   json += F(R"json(","locked":)json");
   json += controlsLocked ? F("true") : F("false");
+  json += F(R"json(,"pwmReady":)json");
+  json += pwmReady ? F("true") : F("false");
   json += F(R"json(,"uptimeMs":)json");
   json += millis();
   json += F(R"json(,"joints":[)json");
@@ -513,6 +537,11 @@ void sendStatusJson() {
 void handleJointRequest() {
   if (controlsLocked) {
     sendApiError(423, F("ระบบถูกล็อก กรุณาปลดล็อกก่อน"));
+    return;
+  }
+
+  if (!pwmReady) {
+    sendApiError(503, F("PCA9685 is not ready. Check I2C wiring."));
     return;
   }
 
@@ -569,6 +598,11 @@ void handleOffRequest() {
   homeJointId = -1;
   homeAdvanceAtMs = 0;
 
+  if (!pwmReady) {
+    sendApiError(503, F("PCA9685 is not ready. Check I2C wiring."));
+    return;
+  }
+
   if (!webServer.hasArg("id")) {
     disableAllJoints();
     sendApiOk();
@@ -595,12 +629,38 @@ void handleEmergencyStop() {
 
 void setupWiFiAndWeb() {
   WiFi.persistent(false);
-  WiFi.mode(WIFI_AP);
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
 
-  if (!WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD)) {
+  WiFi.mode(WIFI_AP);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setOutputPower(20.5F);
+
+  const IPAddress apIp(192, 168, 4, 1);
+  const IPAddress gateway(192, 168, 4, 1);
+  const IPAddress subnet(255, 255, 255, 0);
+  if (!WiFi.softAPConfig(apIp, gateway, subnet)) {
+    Serial.println(F("WARNING: Could not apply SoftAP IP config."));
+  }
+
+  bool apStarted = false;
+  for (uint8_t attempt = 1; attempt <= 3; ++attempt) {
+    Serial.printf("Starting Wi-Fi AP attempt %u...\n", attempt);
+    apStarted = WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, 1, false, 4);
+    if (apStarted) {
+      break;
+    }
+    delay(500);
+  }
+
+  if (!apStarted) {
     Serial.println(F("ERROR: Could not start the Wi-Fi access point."));
     return;
   }
+  delay(100);
 
   webServer.on("/", HTTP_GET, []() {
     webServer.send_P(200, PSTR("text/html; charset=utf-8"), WEB_UI_HTML);
@@ -629,6 +689,8 @@ void setupWiFiAndWeb() {
   Serial.println(F("Web controller ready"));
   Serial.printf("  Wi-Fi:    %s\n", WIFI_AP_SSID);
   Serial.printf("  Password: %s\n", WIFI_AP_PASSWORD);
+  Serial.printf("  AP MAC:   %s\n", WiFi.softAPmacAddress().c_str());
+  Serial.printf("  Channel:  %u\n", WiFi.channel());
   Serial.printf("  Open:     http://%s/\n",
                 WiFi.softAPIP().toString().c_str());
   if (mdnsReady) {
@@ -643,26 +705,27 @@ void setup() {
   Serial.println();
   Serial.println(F("Starting 6DOF robot arm controller..."));
 
+  setupWiFiAndWeb();
+
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
 
   if (!pwm.begin()) {
-    Serial.println(F("FATAL: PCA9685 not found at I2C address 0x40."));
+    pwmReady = false;
+    controlsLocked = true;
+    Serial.println(F("WARNING: PCA9685 not found at I2C address 0x40."));
     Serial.println(F("Check VCC, GND, SDA and SCL wiring."));
-
-    while (true) {
-      delay(1000);
-      yield();
-    }
+    Serial.println(F("Wi-Fi and web diagnostics remain available."));
+    Serial.println(F("Fix wiring and reset the ESP8266 to enable servo control."));
+    return;
   }
 
+  pwmReady = true;
   pwm.setPWMFreq(SERVO_FREQUENCY_HZ);
   delay(10);
 
   // Do not move the arm automatically at boot.
   disableAllJoints();
-
-  setupWiFiAndWeb();
 
   Serial.println(F("PCA9685 detected. Servo outputs remain OFF."));
   Serial.println(F("Controls start LOCKED. Use the web UI or type UNLOCK."));
