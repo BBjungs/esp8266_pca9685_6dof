@@ -375,8 +375,11 @@ const char WEB_UI_HTML[] PROGMEM = R"HTML(
 
     function renderState(resetPreview = false) {
       const movingCount = state.joints.filter(j => j.moving).length;
-      el('pwmValue').textContent = state.pwmReady ? 'CONNECTED' : 'NOT FOUND';
-      el('pwmAddressValue').textContent = '0x' + state.pwmAddress.toString(16).toUpperCase().padStart(2, '0') + ' (0x40-0x7F)';
+      const pwmConnected = state.pwmReady === true;
+      const pwmAddress = Number.isFinite(Number(state.pwmAddress)) ? Number(state.pwmAddress) : 0x40;
+      el('pwmValue').textContent = pwmConnected ? 'CONNECTED' : 'NOT FOUND';
+      el('pwmAddressValue').textContent = '0x' + pwmAddress.toString(16).toUpperCase().padStart(2, '0') + ' (0x40-0x7F)';
+      el('headerStatus').textContent = (pwmConnected ? 'PCA9685 CONNECTED' : 'PCA9685 NOT FOUND') + ' · ' + (state.locked ? 'ระบบล็อกอยู่' : 'พร้อมควบคุม');
       el('connectionDot').className = 'dot online';
       el('connectionText').textContent = 'เชื่อมต่อกับตัวควบคุมแล้ว';
       el('headerStatus').textContent = state.locked ? 'ระบบล็อกอยู่ · ปลดล็อกก่อนควบคุม' : 'พร้อมรับคำสั่งควบคุม';

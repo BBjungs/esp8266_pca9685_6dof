@@ -249,7 +249,8 @@ void printStatus() {
   Serial.println();
   Serial.println(F("Joint status"));
   Serial.println(F("------------------------------------------"));
-  Serial.printf("PCA9685:  %s\n", pwmReady ? "READY" : "NOT FOUND");
+  Serial.printf("PCA9685:  %s at I2C 0x%02X (range 0x40..0x7F)\n",
+                pwmReady ? "CONNECTED" : "NOT FOUND", PCA9685_ADDRESS);
   Serial.printf("Controls: %s\n", controlsLocked ? "LOCKED" : "UNLOCKED");
 
   for (uint8_t id = 0; id < SERVO_COUNT; ++id) {
