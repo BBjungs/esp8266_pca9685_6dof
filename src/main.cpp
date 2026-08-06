@@ -14,12 +14,18 @@
 // ESP8266 NodeMCU -> PCA9685
 // D2 / GPIO4 = SDA
 // D1 / GPIO5 = SCL
-// PCA9685 I2C address = 0x40
+// PCA9685 I2C address: A5..A0, valid range 0x40..0x7F.
+// Change PCA9685_ADDRESS when the board address jumpers are changed.
 // ============================================================
 
 constexpr uint8_t SDA_PIN = D2;
 constexpr uint8_t SCL_PIN = D1;
+constexpr uint8_t PCA9685_ADDRESS_MIN = 0x40;
+constexpr uint8_t PCA9685_ADDRESS_MAX = 0x7F;
 constexpr uint8_t PCA9685_ADDRESS = 0x40;
+static_assert(PCA9685_ADDRESS >= PCA9685_ADDRESS_MIN &&
+                  PCA9685_ADDRESS <= PCA9685_ADDRESS_MAX,
+              "PCA9685 address must be between 0x40 and 0x7F");
 constexpr uint8_t SERVO_COUNT = 6;
 constexpr float SERVO_FREQUENCY_HZ = 50.0F;
 constexpr uint16_t STEP_DELAY_MS = 18;
@@ -498,6 +504,12 @@ void sendStatusJson() {
   json += controlsLocked ? F("true") : F("false");
   json += F(R"json(,"pwmReady":)json");
   json += pwmReady ? F("true") : F("false");
+  json += F(R"json(,"pwmAddress":)json");
+  json += static_cast<unsigned int>(PCA9685_ADDRESS);
+  json += F(R"json(,"pwmAddressMin":)json");
+  json += static_cast<unsigned int>(PCA9685_ADDRESS_MIN);
+  json += F(R"json(,"pwmAddressMax":)json");
+  json += static_cast<unsigned int>(PCA9685_ADDRESS_MAX);
   json += F(R"json(,"uptimeMs":)json");
   json += millis();
   json += F(R"json(,"joints":[)json");
@@ -713,7 +725,8 @@ void setup() {
   if (!pwm.begin()) {
     pwmReady = false;
     controlsLocked = true;
-    Serial.println(F("WARNING: PCA9685 not found at I2C address 0x40."));
+    Serial.printf("WARNING: PCA9685 not found at I2C address 0x%02X.\n",
+                  PCA9685_ADDRESS);
     Serial.println(F("Check VCC, GND, SDA and SCL wiring."));
     Serial.println(F("Wi-Fi and web diagnostics remain available."));
     Serial.println(F("Fix wiring and reset the ESP8266 to enable servo control."));

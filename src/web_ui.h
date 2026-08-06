@@ -135,13 +135,13 @@ const char WEB_UI_HTML[] PROGMEM = R"HTML(
     .content { width: min(1180px, 100%); margin: 0 auto; padding: 28px; }
     .status-strip {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       margin-bottom: 18px;
       border: 1px solid var(--line);
       background: var(--panel);
     }
     .metric { min-width: 0; padding: 14px 17px; border-right: 1px solid var(--line); }
-    .metric:last-child { border-right: 0; }
+    .metric:nth-child(6n) { border-right: 0; }
     .metric-label { display: block; color: var(--muted); font-size: 11px; }
     .metric-value { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
     .workspace { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr); gap: 18px; align-items: start; }
@@ -212,8 +212,8 @@ const char WEB_UI_HTML[] PROGMEM = R"HTML(
       .subtitle { display: none; }
       .content { padding: 16px 12px 28px; }
       .status-strip { grid-template-columns: 1fr 1fr; }
-      .metric:nth-child(2) { border-right: 0; }
-      .metric:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .metric:nth-child(2n) { border-right: 0; }
+      .metric:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
       .workspace, .side-stack { grid-template-columns: 1fr; }
       .panel-head, .control-body { padding-left: 17px; padding-right: 17px; }
       .angle-readout strong { font-size: 52px; }
@@ -253,6 +253,9 @@ const char WEB_UI_HTML[] PROGMEM = R"HTML(
           <div class="metric"><span class="metric-label">IP Address</span><strong class="metric-value" id="ipValue">-</strong></div>
           <div class="metric"><span class="metric-label">ความปลอดภัย</span><strong class="metric-value" id="lockValue">-</strong></div>
           <div class="metric"><span class="metric-label">กำลังเคลื่อนที่</span><strong class="metric-value" id="movingValue">-</strong></div>
+          <div class="metric"><span class="metric-label">PCA9685</span><strong class="metric-value" id="pwmValue">-</strong></div>
+          <div class="metric"><span class="metric-label">I2C Address</span><strong class="metric-value" id="pwmAddressValue">-</strong></div>
+
         </section>
 
         <div class="workspace">
@@ -372,6 +375,8 @@ const char WEB_UI_HTML[] PROGMEM = R"HTML(
 
     function renderState(resetPreview = false) {
       const movingCount = state.joints.filter(j => j.moving).length;
+      el('pwmValue').textContent = state.pwmReady ? 'CONNECTED' : 'NOT FOUND';
+      el('pwmAddressValue').textContent = '0x' + state.pwmAddress.toString(16).toUpperCase().padStart(2, '0') + ' (0x40-0x7F)';
       el('connectionDot').className = 'dot online';
       el('connectionText').textContent = 'เชื่อมต่อกับตัวควบคุมแล้ว';
       el('headerStatus').textContent = state.locked ? 'ระบบล็อกอยู่ · ปลดล็อกก่อนควบคุม' : 'พร้อมรับคำสั่งควบคุม';
